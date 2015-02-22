@@ -1,0 +1,7 @@
+.menu-link-options-view-options-wrapper pre {
+    background-color: #f4f4f4;
+    border: 1px solid #eaeaea;
+    padding: 5px 15px;
+    overflow: scroll;
+    max-height: 120px;
+}

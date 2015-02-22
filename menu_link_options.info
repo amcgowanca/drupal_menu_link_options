@@ -1,0 +1,6 @@
+name = Menu Link Options
+description = Provides an interface for displaying and editing properties in a menu link's options array.
+core = 7.x
+version = 7.x-1.0
+
+dependencies[] = menu

@@ -1,0 +1,46 @@
+<?php
+/**
+ * @file
+ * menu_link_options.module
+ */
+
+/**
+ * Implements hook_permission().
+ */
+function menu_link_options_permission() {
+  return array(
+    'view menu link options' => array(
+      'title' => t('View menu link options'),
+      'description' => t('Allows for the options to be viewed.'),
+    ),
+  );
+}
+
+/**
+ * Implements hook_form_FORM_ID_alter().
+ */
+function menu_link_options_form_menu_edit_item_alter(&$form, &$form_state) {
+  $view_access = user_access('view menu link options');
+  $form['menu_link_options'] = array(
+    '#type' => 'fieldset',
+    '#title' => t('Menu link options'),
+    '#access' => $view_access,
+    '#collapsible' => TRUE,
+    '#collapsed' => TRUE,
+  );
+  $form['menu_link_options']['view-wrapper'] = array(
+    '#type' => 'container',
+    '#access' => $view_access,
+    '#attributes' => array(
+      'class' => array('menu-link-options-view-options-wrapper'),
+    ),
+  );
+  $form['menu_link_options']['view-wrapper']['options'] = array(
+    '#type' => 'markup',
+    '#markup' => var_export($form['options']['#value'], TRUE),
+    '#prefix' => '<label>' . t('Options') . '</label><pre>',
+    '#suffix' => '</pre><div class="description">' . t("The output display above is a string representation of this menu link's low-level stored options.") . '</div>',
+    '#access' => $view_access,
+  );
+  $form['#attached']['css'][] = drupal_get_path('module', 'menu_link_options') . '/menu_link_options.css';
+}
