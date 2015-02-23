@@ -1,0 +1,46 @@
+<?php
+/**
+ * @file
+ * menu_link_options_example.module
+ */
+
+/**
+ * Implements hook_menu_link_options_info().
+ */
+function menu_link_options_example_menu_link_options_info() {
+  return array(
+    'example_group' => array(
+      'label' => t('Example group'),
+      'types' => array(
+        'foo' => array('title' => t('Option foo')),
+        'bar' => array('title' => t('Option bar')),
+      ),
+    ),
+  );
+}
+
+/**
+ * Implements hook_menu_link_options_form_element().
+ */
+function menu_link_options_example_menu_link_options_form_element($type, $element, $value, &$form, &$form_state) {
+  switch ($type['name']) {
+    case 'foo':
+      $element += array(
+        '#type' => 'textfield',
+        '#default_value' => !empty($value) ? $value : 'This is the default value.',
+      );
+      break;
+    case 'bar':
+      $element += array(
+        '#type' => 'select',
+        '#options' => array(
+          'a' => t('Value A'),
+          'b' => t('Value B'),
+          'c' => t('Value C'),
+        ),
+        '#default_value' => !empty($value) ? $value : 'a',
+      );
+      break;
+  }
+  return $element;
+}

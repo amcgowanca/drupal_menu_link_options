@@ -13,6 +13,10 @@ function menu_link_options_permission() {
       'title' => t('View menu link options'),
       'description' => t('Allows for the options to be viewed.'),
     ),
+    'manage menu link options' => array(
+      'title' => t('Manage menu link options'),
+      'description' => t('Allows for options to be managed if form elements exist for the option.'),
+    ),
   );
 }
 
@@ -22,25 +26,214 @@ function menu_link_options_permission() {
 function menu_link_options_form_menu_edit_item_alter(&$form, &$form_state) {
   $view_access = user_access('view menu link options');
   $form['menu_link_options'] = array(
-    '#type' => 'fieldset',
-    '#title' => t('Menu link options'),
+    '#type' => 'container',
+    '#weight' => 100,
+  );
+  $form['menu_link_options']['menu_link_options_wrapper'] = array(
+    '#type' => 'vertical_tabs',
     '#access' => $view_access,
-    '#collapsible' => TRUE,
-    '#collapsed' => TRUE,
+    '#prefix' => '<label>' . t('Menu link options') . '</label>',
   );
   $form['menu_link_options']['view-wrapper'] = array(
-    '#type' => 'container',
+    '#type' => 'fieldset',
+    '#title' => t('View options'),
     '#access' => $view_access,
+    '#group' => 'menu_link_options_wrapper',
+    '#collapsible' => TRUE,
+    '#collapsed' => TRUE,
     '#attributes' => array(
       'class' => array('menu-link-options-view-options-wrapper'),
     ),
+    '#weight' => 10,
   );
   $form['menu_link_options']['view-wrapper']['options'] = array(
     '#type' => 'markup',
     '#markup' => var_export($form['options']['#value'], TRUE),
-    '#prefix' => '<label>' . t('Options') . '</label><pre>',
-    '#suffix' => '</pre><div class="description">' . t("The output display above is a string representation of this menu link's low-level stored options.") . '</div>',
+    '#prefix' => '<div class="description">' . t("The output display above is a string representation of this menu link's low-level stored options.") . '</div><pre>',
+    '#suffix' => '</pre>',
     '#access' => $view_access,
   );
+  _menu_link_options_build_menu_item_options_form($form, $form_state);
+  $form['#validate'][] = 'menu_link_options_form_menu_edit_item_validate';
+  // Place our submit handler at the beginning of this form's #submit handler
+  // array to ensure that the various option type element submit callbacks will
+  // be called prior to any real menu link saving. This will ensure that value
+  // alterations can occur accurately.
+  array_unshift($form['#submit'], 'menu_link_options_form_menu_edit_item_submit');
   $form['#attached']['css'][] = drupal_get_path('module', 'menu_link_options') . '/menu_link_options.css';
+}
+
+/**
+ * Builds the form elements for the menu link edit form for managing options.
+ *
+ * @param array $form
+ *   The form array passed by reference.
+ * @param array $form_state
+ *   The form's state passed by reference.
+ */
+function _menu_link_options_build_menu_item_options_form(&$form, &$form_state) {
+  if (is_string($form['options']['#value'])) {
+    $values = @unserialize($form['options']['#value']);
+  }
+  else {
+    $values = $form['options']['#value'];
+  }
+
+  $manage_access = user_access('manage menu link options');
+  $form['menu_link_options']['settings'] = array(
+    '#type' => 'fieldset',
+    '#title' => t('Manage options'),
+    '#access' => $manage_access,
+    '#group' => 'menu_link_options_wrapper',
+    '#collapsible' => TRUE,
+    '#collapsed' => TRUE,
+    '#weight' => -10,
+  );
+  $form['menu_link_options']['settings']['group_wrapper'] = array(
+    '#type' => 'horizontal_tabs',
+    '#attached' => array(
+      'library' => array(array('field_group', 'horizontal-tabs')),
+    ),
+  );
+
+  $empty = TRUE;
+  $menu_item = $form['original_item']['#value'];
+  foreach (menu_link_options_get_options() as $group => $info) {
+    if (!empty($info['menus']) && !in_array($menu_item['menu_name'], $info['menus'])) {
+      continue;
+    }
+
+    $empty = FALSE;
+    $form['menu_link_options']['settings'][$group] = array(
+      '#type' => 'fieldset',
+      '#title' => $info['label'],
+      '#group' => 'group_wrapper',
+      '#tree' => TRUE,
+      '#parents' => array('options', $group),
+    );
+
+    foreach ($info['types'] as $type => $type_info) {
+      if (empty($type_info['element callback']) || !function_exists($type_info['element callback'])) {
+        continue;
+      }
+
+      $element = array(
+        '#title' => $type_info['title'],
+        '#access' => TRUE,
+      );
+
+      if (!empty($type_info['description'])) {
+        $element['#description'] = $type_info['description'];
+      }
+
+      $function = $type_info['element callback'];
+      $value = isset($values[$group][$type]) ? $values[$group][$type] : NULL;
+      $element = $function($type_info, $element, $value, $form, $form_state);
+      if (!empty($element)) {
+        $form['menu_link_options']['settings'][$group][$type] = $element;
+      }
+    }
+  }
+  // If no options are registered or none of them have valid element callbacks
+  // to build the option's form element, simply render a default "empty" message
+  // letting the user know that no options exist.
+  if ($empty) {
+    $form['menu_link_options']['settings']['group_wrapper']['empty'] = array(
+      '#type' => 'markup',
+      '#prefix' => '<div class="description">',
+      '#suffix' => '</div>',
+      '#markup' => t('There are currently no defined menu link options that are available to be managed within this form.'),
+    );
+  }
+}
+
+/**
+ * Form validation handler for the menu link edit form.
+ *
+ * @param array $form
+ *   The form structure.
+ * @param array $form_state
+ *   The current form's state.
+ */
+function menu_link_options_form_menu_edit_item_validate($form, &$form_state) {
+  if (user_access('manage menu link options')) {
+    foreach (menu_link_options_get_options() as $group => $group_info) {
+      foreach ($group_info['types'] as $type => $type_info) {
+        if (isset($form['menu_link_options']['settings'][$group][$type])) {
+          $element = $form['menu_link_options']['settings'][$group][$type];
+          $function = $type_info['validate callback'];
+          if (function_exists($function)) {
+            $function($type_info, $element, $form_state['values']['options'][$group][$type], $form, $form_state);
+          }
+        }
+      }
+    }
+  }
+}
+
+/**
+ * Form submit handler for menu link edit form.
+ *
+ * @param array $form
+ *   The form structure.
+ * @param array $form_state
+ *   The current form's state.
+ */
+function menu_link_options_form_menu_edit_item_submit($form, &$form_state) {
+  if (user_access('manage menu link options')) {
+    foreach (menu_link_options_get_options() as $group => $group_info) {
+      foreach ($group_info['types'] as $type => $type_info) {
+        if (isset($form['menu_link_options']['settings'][$group][$type])) {
+          $element = $form['menu_link_options']['settings'][$group][$type];
+          $function = $type_info['submit callback'];
+          if (function_exists($function)) {
+            $value = $function($type_info, $element, $form_state['values']['options'][$group][$type], $form, $form_state);
+            $form_state['values']['options'][$group][$type] = $value;
+          }
+        }
+      }
+    }
+  }
+}
+
+/**
+ * Returns an associative array of option groups and option types.
+ *
+ * @return array
+ *   An array of registered options.
+ */
+function menu_link_options_get_options() {
+  $registered_options = &drupal_static(__FUNCTION__, NULL);
+  if (NULL === $registered_options) {
+    $registered_options = array();
+    foreach (module_implements('menu_link_options_info') as $module) {
+      $function = $module . '_menu_link_options_info';
+      $info = call_user_func($function);
+      if (!is_array($info)) {
+        $info = array();
+      }
+
+      foreach ($info as $group_name => $group_info) {
+        $group_info += array(
+          'label' => '',
+          'types' => array(),
+          'menus' => array(),
+          'module' => $module,
+        );
+        $registered_options[$group_name] = $group_info;
+        foreach ($group_info['types'] as $type_name => $type_info) {
+          $type_info += array(
+            'name' => $type_name,
+            'description' => '',
+            'element callback' => $module . '_menu_link_options_form_element',
+            'validate callback' => $module . '_menu_link_options_form_element_validate',
+            'submit callback' => $module . '_menu_link_options_form_element_submit',
+          );
+          $registered_options[$group_name]['types'][$type_name] = $type_info;
+        }
+      }
+    }
+    drupal_alter('menu_link_options', $registered_options);
+  }
+  return $registered_options;
 }

@@ -1,0 +1,6 @@
+name = Menu Link Options Examples
+description = A module to demonstrate and provide examples of how to make use of the Menu Link Options API.
+core = 7.x
+version = 7.x-1.0
+
+dependencies[] = menu_link_options
